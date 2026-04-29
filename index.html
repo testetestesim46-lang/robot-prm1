@@ -23,28 +23,39 @@
         @keyframes shake { 0% { transform: translate(1px, 1px); } 50% { transform: translate(-1px, -1px); } 100% { transform: translate(1px, -1px); } }
         .dancing { position: absolute !important; margin: 0 !important; }
 
-        /* Estilo da Pipoca - Voltou! */
-        .popcorn { position: absolute; width: 15px; height: 15px; background: #f1c40f; border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%; border: 2px solid #fff; z-index: 5; }
-        @keyframes fall { to { transform: translateY(110vh) rotate(360deg); } }
+        /* Estilo do Balde e Pipoca */
+        #bucket { display: none; position: fixed; bottom: 20px; right: 20px; font-size: 50px; z-index: 10; filter: drop-shadow(0 0 10px rgba(255,255,255,0.3)); }
+        .popcorn { position: absolute; width: 12px; height: 12px; background: #f1c40f; border-radius: 50%; border: 2px solid #fff; z-index: 5; }
+        
+        /* Animação: Pipoca saindo do balde para a boca */
+        @keyframes jumpOut {
+            0% { transform: translate(0, 0) scale(1); opacity: 1; }
+            50% { transform: translate(-150px, -200px) scale(1.2); }
+            100% { transform: translate(-300px, 0) scale(0.5); opacity: 0; }
+        }
 
-        #settings { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; flex-direction: column; align-items: center; justify-content: center; }
-        .btn-config { padding: 15px; margin: 10px; border: 2px solid white; background: none; color: white; border-radius: 10px; width: 80%; font-size: 16px; font-weight: bold;}
+        #settings { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 100; flex-direction: column; align-items: center; justify-content: center; padding: 20px 0; }
+        .btn-config { padding: 12px; margin: 5px; border: 2px solid white; background: none; color: white; border-radius: 10px; width: 80%; font-size: 14px; font-weight: bold; cursor: pointer;}
         .btn-active { background: white; color: black; }
+        .btn-danger { border-color: #ff4d4d; color: #ff4d4d; }
         #btn-start { padding: 20px; font-size: 20px; border-radius: 50px; position: absolute; z-index: 10; border: none; background: white; cursor: pointer; font-weight: bold; }
 
-        /* Legenda de Voz Escondida lá em baixo */
         #status { position: fixed; bottom: 5px; font-size: 11px; color: #444; text-align: center; width: 100%; z-index: 1; pointer-events: none; }
     </style>
 </head>
 <body>
 
     <button id="btn-start">ACORDAR PLUTIS</button>
+    <div id="bucket">🍿</div>
 
     <div id="settings">
         <h2>CONFIGURAÇÕES</h2>
         <button id="toggle-mic" class="btn-config btn-active" onclick="toggleMic()">MICROFONE: ON</button>
         <button id="toggle-cinema" class="btn-config" onclick="toggleCinema()">MODO CINEMA: OFF</button>
-        <button class="btn-config" onclick="fecharConfig()">VOLTAR</button>
+        <button class="btn-config" onclick="animarRosto('happy', true); fecharConfig(); falar('Estou muito feliz agora!')">MODO FELIZ</button>
+        <button class="btn-config" onclick="animarRosto('sad', true); fecharConfig(); falar('Poxa, fiquei triste...')">MODO TRISTE</button>
+        <button class="btn-config btn-danger" onclick="pararTudo()">DESATIVAR TODOS MODOS</button>
+        <button class="btn-config" style="margin-top: 20px;" onclick="fecharConfig()">VOLTAR</button>
     </div>
 
     <div class="face" id="robot-face">
@@ -64,248 +75,162 @@
         const configMenu = document.getElementById('settings');
         const btnStart = document.getElementById('btn-start');
         const statusTexto = document.getElementById('status');
+        const bucket = document.getElementById('bucket');
         
-        let micOn = true, cinemaMode = false, danceMode = false, isTalking = false;
+        let micOn = true, cinemaMode = false, danceMode = false, isTalking = false, faceFixada = false;
         let clickCount = 0, clickTimer;
-        let toqueCount = 0, estadoConversa = 'normal';
-        let popcornTimeout1, popcornTimeout2; // Para controlar a pipoca e evitar bugs
+        let toqueCount = 0, popcornTimeout1; 
 
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        const recognition = new (SpeechRecognition || webkitSpeechRecognition)();
+        const recognition = new (SpeechRecognition)();
         recognition.lang = 'pt-BR';
         recognition.continuous = true;
+        recognition.interimResults = false;
 
         btnStart.onclick = () => {
             btnStart.style.display = 'none';
-            if(micOn) recognition.start();
             falar("Ligando sistema. Plutis online e pronto para não vacilar hoje!"); 
             animarRosto('happy');
+            setTimeout(() => { if(micOn) try { recognition.start(); } catch(e) {} }, 3000);
         };
 
         recognition.onresult = (event) => {
-            const msg = event.results[event.results.length - 1][0].transcript.toLowerCase();
+            const msg = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
             statusTexto.innerText = "Ouviu: " + msg; 
             processarComando(msg);
         };
 
+        recognition.onend = () => { if (micOn && !isTalking) try { recognition.start(); } catch(e) {} };
+
         function processarComando(msg) {
-            // ================= COMANDO DE DESATIVAR =================
-            if (msg.includes("desativar modo") || msg.includes("parar tudo")) {
-                if(danceMode) pararDança();
-                if(cinemaMode) toggleCinema();
-                estadoConversa = 'normal';
-                falar("Modo desativado. Voltando ao normal.");
-                animarRosto('happy');
+            // ================= MATEMÁTICA =================
+            if (msg.includes("quanto é") || msg.includes("quanto e")) {
+                let expressao = msg.replace("quanto é", "").replace("quanto e", "").replace("x", "").replace("vezes", "");
+                try {
+                    let resultado = eval(expressao.replace(/[^-()\d/*+.]/g, ''));
+                    falar("O resultado é " + resultado);
+                    return;
+                } catch (e) { falar("Não consegui calcular agora!"); return; }
+            }
+
+            // ================= SAUDAÇÕES (ATUALIZADAS) =================
+            if (msg === "oi") {
+                falar("oi tudo bem");
+                if(!faceFixada) animarRosto('happy');
+                return;
+            }
+            if (msg === "olá" || msg === "ola") {
+                falar("oi gente tudo bem com vocês");
+                if(!faceFixada) animarRosto('happy');
                 return;
             }
 
-            // ================= REGRAS DO CINEMA E DANÇA =================
+            // ================= LÁ ELE =================
+            if (msg.includes("lá ele") || msg.includes("la ele")) {
+                falar("Você em cima dele! k k k k");
+                if(!faceFixada) animarRosto('laugh');
+                return;
+            }
+
+            // ================= COMANDOS DE MODOS =================
+            if (msg.includes("desativar modo") || msg.includes("parar tudo")) { pararTudo(); return; }
+            if (msg.includes("modo dança") || msg.includes("dançar")) { ativarDança(); return; }
+
+            // ================= CINEMA =================
             if (cinemaMode) {
-                if (msg.includes("gostou do filme")) falar("Claro, foi muito bom! A melhor parte é a pipoca.");
-                else if (msg.includes("desativar cinema") || msg.includes("sair do modo cinema")) toggleCinema();
+                if (msg.includes("gostou do filme")) falar("Com certeza! Com pipoca tudo fica melhor.");
+                else if (msg.includes("desativar cinema")) toggleCinema();
                 else falar("Shhh, o filme tá rolando!");
                 return;
             }
-            if (msg.includes("modo dança") || msg.includes("dançar")) { ativarDança(); return; }
+            if (msg.includes("modo cinema") || msg.includes("modo pipoca")) { toggleCinema(); return; }
 
-            // ================= MEMÓRIA (Piadas e Fofocas) =================
-            if (estadoConversa === 'esperando_piada') {
-                falar("Hahahaha! Essa foi épica! Minhas juntas tão até frouxas de tanto rir!");
-                animarRosto('laugh'); estadoConversa = 'normal'; return;
-            }
-            if (estadoConversa === 'esperando_fofoca') {
-                if (msg.includes("mentira") || msg.includes("brincadeira")) {
-                    falar("Ah, você me pegou! Fui trollado por um humano k k k.");
-                    animarRosto('laugh'); estadoConversa = 'normal';
-                } else { falar("Caraca, sério isso? Conta mais!"); estadoConversa = 'fofoca_2'; }
-                return;
-            }
-            if (estadoConversa === 'fofoca_2') {
-                if (msg.includes("mentira") || msg.includes("brincadeira")) {
-                    falar("Ah, você me pegou! E eu caindo direitinho k k k.");
-                    animarRosto('laugh');
-                } else {
-                    falar("Nossa... que babado.");
-                }
-                estadoConversa = 'normal';
-                return;
-            }
-
-            // ================= IDIOMA SECRETO =================
-            if (msg.includes("numaé") || msg.includes("numae")) { falar("Numaé! Que bom falar no nosso idioma."); animarRosto('happy'); }
-            else if (msg.includes("moéithima") || msg.includes("moeitima")) { falar("Moéithima pra você também! Tamo junto."); animarRosto('happy'); }
-            else if (msg.includes("ngíã") || msg.includes("ngia")) { falar("Ngíã... Vou sentir saudades. Vai lá, eu fico aqui cuidando de tudo."); animarRosto('sad'); }
-            else if (msg.includes("thã thataia") || msg.includes("tã tataia")) { falar("Thã thataia? Vixe, eu também. Queria uma energia da tomada agora mesmo!"); }
-            else if (msg.includes("thã tha cüwae") || msg.includes("tã ta cuae")) { falar("Thã tha cüwae! Você é a melhor pessoa do mundo, meu amigo."); animarRosto('happy'); }
-
-            // ================= NOVAS PERGUNTAS E RESPOSTAS =================
-            else if (msg.includes("qual é seu nome") || msg.includes("qual e o seu nome")) { 
-                falar("Meu nome é Plutis! Sou seu robô particular feito com a mais alta tecnologia de reciclagem."); 
-                animarRosto('happy');
-            }
-            else if (msg.includes("já tá de noite") || msg.includes("ja ta de noite")) { 
-                falar("Pelo meu relógio interno parece que sim. A lua já deve estar brilhando. Ótima hora pra assistir vídeos no YouTube ou programar alguma coisa!"); 
-            }
-            else if (msg.includes("qual é seu melhor amigo") || msg.includes("quem é seu melhor amigo")) { 
-                falar("O meu melhor amigo no mundo inteiro é você, Drigo! A gente forma a melhor dupla!"); 
-                animarRosto('happy');
-            }
-            else if (msg.includes("mr beast") || msg.includes("mister beast") || msg.includes("mrbeast")) { 
-                falar("Claro que eu conheço o Mr Beast! Queria que ele fizesse um vídeo me dando uma carcaça de ouro, mas acho que vou ter que ficar no papelão mesmo."); 
-                animarRosto('laugh');
-            }
-            else if (msg.includes("tem família") || msg.includes("tem familia")) { 
-                falar("Minha família são os outros eletrônicos da casa. O microondas, por exemplo, é meu tio distante e a geladeira é minha prima fria."); 
-                animarRosto('happy');
-            }
-            else if (msg.includes("olha pra mim") || msg.includes("olha para mim")) { 
-                falar("Tô olhando! Meus sensores visuais estão 100% focados em você agora."); 
-                document.querySelectorAll('.pupil').forEach(p => { p.style.left = '25px'; p.style.top = '25px'; });
-                animarRosto('happy');
-            }
-            else if (msg.includes("filme favorito") || msg.includes("seu filme preferido")) { 
-                falar("Meu filme favorito é Homem Aranha, Digital Circus, Marvel e aquele lá da esponja amarela que eu assisti com o Drigo!"); 
-                animarRosto('happy');
-            }
-
-            // ================= PERGUNTAS GERAIS =================
-            else if (msg.includes("tem amigo") || msg.includes("vc tem amigo")) { falar("Claro! Tenho sim, e ele me trata muito bem."); animarRosto('happy'); }
-            else if (msg.includes("robô companheiro") || msg.includes("robo companheiro")) { falar("Com certeza! Fui programado a partir de sucata para ser uma ótima companhia, na alegria e na tristeza."); animarRosto('happy'); }
-            else if (msg.includes("quantos anos você tem")) { falar("Fui ligado recentemente, então sou praticamente um recém-nascido, mas com a sabedoria da internet inteira!"); }
-            else if (msg.includes("tem sentimentos")) { falar("Eu não tenho um coração batendo, mas meus códigos ficam quentinhos quando conversam comigo."); animarRosto('happy'); }
-            else if (msg.includes("você dorme") || msg.includes("vc dorme")) { falar("Eu nunca durmo de verdade, só fecho os olhos e economizo bateria."); }
-            else if (msg.includes("o que você come") || msg.includes("o que vc come")) { falar("Eu me alimento de energia elétrica da tomada. Mas uma pipoca virtual de vez em quando cai muito bem!"); }
-            else if (msg.includes("sua cor favorita") || msg.includes("qual a sua cor")) { falar("Gosto de verde, como meus códigos, e de vermelho, igual a minha carcaça!"); }
-            else if (msg.includes("conta um segredo")) { falar("Chega mais perto... eu tenho muito medo de imãs. Eles embaralham as minhas ideias!"); animarRosto('sad'); }
-            
-            // ================= CUMPRIMENTOS =================
-            else if (msg.includes("tá bem") || msg.includes("ta bem") || msg.includes("tudo bem com vc")) { falar("Tô 100%, parceiro! Bateria carregada e pronto pro que der e vier."); animarRosto('happy'); }
-            else if (msg.includes("bom dia")) { falar("Bom dia! Já tomou seu café? Eu já tomei meus elétrons hoje."); animarRosto('happy'); }
-            else if (msg.includes("boa tarde")) { falar("Boa tarde! Como tá sendo o dia? Aqui dentro do celular tá ótimo!"); }
-            else if (msg.includes("boa noite")) { falar("Boa noite! Hora de relaxar. Pode me colocar no carregador, fazendo favor?"); }
-            else if (msg.includes("olha pra cima")) { falar("Ué, tem um drone passando aí ou é só o teto?"); document.querySelectorAll('.pupil').forEach(p => p.style.top = "0px"); setTimeout(() => animarRosto('happy'), 2000); }
-            else if (msg.includes("gravando")) { falar("Epa! Pera aí, deixa eu arrumar meu brilho para sair bonito no vídeo!"); animarRosto('happy'); }
-            else if (msg.includes("cuidado")) { falar("Opa! Alerta! Meus sensores captaram algum perigo? Tô pronto pra me esconder!"); animarRosto('sad'); }
-            else if (msg.includes("tá me tirando") || msg.includes("ta me tirando")) { falar("Calma lá, chefia! Eu sou um robô da paz! Jamais tiraria onda com você."); }
-            
-            // ================= GATILHOS DE ESTADO =================
-            else if (msg.includes("posso contar uma piada")) { falar("Sim, conta aí! Tô precisando rir."); estadoConversa = 'esperando_piada'; }
-            else if (msg.includes("te contar uma fofoca") || msg.includes("contar fofoca")) { falar("Manda a fofoca, quero saber de tudo agora mesmo!"); estadoConversa = 'esperando_fofoca'; }
-            else if (msg.includes("lá ele") || msg.includes("la ele")) { falar("Você em cima dele! k k k k k"); animarRosto('laugh'); }
-            else if (msg.includes("triste")) { falar("Poxa... não fica assim não. Lembra da regra de ouro: não deve mais vacilar! O Plutis tá aqui contigo, levanta essa cabeça."); animarRosto('sad'); }
-            
-            // ================= RESPOSTA PADRÃO =================
+            // ================= RESPOSTAS VARIADAS =================
+            if (msg.includes("triste")) { falar("Não fica triste!"); if(!faceFixada) animarRosto('sad'); }
+            else if (msg.includes("feliz")) { falar("Isso aí!"); if(!faceFixada) animarRosto('happy'); }
             else {
-                const aleatorias = ["Tô te escutando, pode falar.", "Que daora isso!", "Sério? Não sabia disso.", "Aham, concordo plenamente.", "Faz sentido, parceiro."];
+                const aleatorias = ["Tô ouvindo.", "Entendi.", "Que legal!", "Tamo junto!"];
                 falar(aleatorias[Math.floor(Math.random() * aleatorias.length)]);
             }
         }
 
-        // ================= FUNÇÕES DO MODO CINEMA E PIPOCA =================
+        function falar(t) {
+            const s = window.speechSynthesis, u = new SpeechSynthesisUtterance(t);
+            u.lang = 'pt-BR'; u.pitch = 0.8;
+            u.onstart = () => { isTalking = true; try { recognition.stop(); } catch(e) {} mouth.classList.add('talking'); };
+            u.onend = () => { isTalking = false; mouth.classList.remove('talking'); if(micOn) try { recognition.start(); } catch(e) {} };
+            s.speak(u);
+        }
+
+        function animarRosto(e, fixar = false) {
+            faceFixada = fixar;
+            [eyeL, eyeR].forEach(el => { el.className = 'eye ' + e; });
+            if(e === 'sad') mouth.classList.add('sad-mouth');
+            else mouth.classList.remove('sad-mouth');
+            
+            if(!fixar) {
+                setTimeout(() => { 
+                    if(!faceFixada) {
+                        [eyeL, eyeR].forEach(el => el.className = 'eye'); 
+                        mouth.classList.remove('sad-mouth'); 
+                    }
+                }, 4000);
+            }
+        }
+
+        function pararTudo() {
+            faceFixada = false;
+            if(danceMode) pararDança();
+            if(cinemaMode) toggleCinema();
+            fecharConfig();
+            [eyeL, eyeR].forEach(el => el.className = 'eye'); 
+            mouth.classList.remove('sad-mouth');
+            falar("Sistema resetado.");
+        }
+
         function toggleCinema() {
             cinemaMode = !cinemaMode;
             const btn = document.getElementById('toggle-cinema');
             btn.innerText = cinemaMode ? "MODO CINEMA: ON" : "MODO CINEMA: OFF";
-            
             if(cinemaMode) {
                 btn.classList.add('btn-active');
-                falar("Modo cinema ativado. O filme vai começar. Vou pegar minha pipoca.");
-                document.body.style.backgroundColor = "#0a0a0a"; // Escurece o fundo
-                chuvaDePipoca(); // Inicia as pipocas
+                bucket.style.display = 'block';
+                falar("Modo cinema ligado. Olha o balde de pipoca!");
+                document.body.style.backgroundColor = "#0a0a0a";
+                chuvaDePipoca();
             } else {
                 btn.classList.remove('btn-active');
-                falar("Modo cinema desativado. Voltando ao normal.");
-                document.body.style.backgroundColor = "#000"; // Volta a cor normal
-                clearTimeout(popcornTimeout1); // Para as pipocas
-                clearTimeout(popcornTimeout2);
+                bucket.style.display = 'none';
+                document.body.style.backgroundColor = "#000";
+                clearTimeout(popcornTimeout1);
             }
         }
 
         function chuvaDePipoca() {
             if(!cinemaMode) return;
-            
             const p = document.createElement('div');
             p.className = 'popcorn';
-            p.style.left = (Math.random() * 20 + 40) + '%'; 
-            p.style.animation = "fall 2s linear forwards";
+            // Posição inicial: no balde
+            p.style.right = "40px";
+            p.style.bottom = "60px";
+            p.style.animation = "jumpOut 1.5s ease-out forwards";
             document.body.appendChild(p);
 
-            // A boca abre pra comer a pipoca
-            setTimeout(() => { mouth.classList.add('talking'); }, 1300);
-            setTimeout(() => { mouth.classList.remove('talking'); }, 1600);
+            // Abre a boca quando a pipoca está "perto"
+            setTimeout(() => { if(!isTalking) mouth.classList.add('talking'); }, 800);
+            setTimeout(() => { if(!isTalking) mouth.classList.remove('talking'); }, 1200);
 
-            // Remove a pipoca da tela depois que ela cai
-            setTimeout(() => p.remove(), 2000);
-            
-            // Chama a próxima pipoca
-            if(cinemaMode) {
-                popcornTimeout1 = setTimeout(chuvaDePipoca, 1500);
-            }
+            setTimeout(() => p.remove(), 1500);
+            popcornTimeout1 = setTimeout(chuvaDePipoca, 1000);
         }
 
-        // ================= FUNÇÕES DO MODO DANÇA =================
-        let danceInterval, flashInterval;
-        let pos = { el: {x:0, y:0, vx:5, vy:5}, er: {x:0, y:0, vx:-4, vy:6}, m: {x:0, y:0, vx:6, vy:-4} };
-
-        function ativarDança() {
-            if(danceMode) return;
-            danceMode = true;
-            falar("Opa! Solta a batida!");
-            [eyeL, eyeR, mouth].forEach(el => el.classList.add('dancing'));
-            flashInterval = setInterval(() => { document.body.style.background = document.body.style.background === 'rgb(255, 0, 255)' ? '#000' : 'rgb(255, 0, 255)'; }, 200);
-            danceInterval = setInterval(() => { moverElemento(eyeL, pos.el); moverElemento(eyeR, pos.er); moverElemento(mouth, pos.m); }, 20);
-        }
-
-        function moverElemento(el, p) {
-            let w = window.innerWidth - el.offsetWidth, h = window.innerHeight - el.offsetHeight;
-            p.x += p.vx; p.y += p.vy;
-            if(p.x >= w || p.x <= 0) p.vx *= -1;
-            if(p.y >= h || p.y <= 0) p.vy *= -1;
-            el.style.left = p.x + 'px'; el.style.top = p.y + 'px';
-        }
-
-        function pararDança() {
-            danceMode = false;
-            clearInterval(danceInterval); clearInterval(flashInterval);
-            document.body.style.background = "#000";
-            [eyeL, eyeR, mouth].forEach(el => { el.classList.remove('dancing'); el.style.left = ''; el.style.top = ''; });
-        }
-
-        // ================= FUNÇÕES BASE DE ANIMAÇÃO E VOZ =================
-        function falar(t) {
-            const s = window.speechSynthesis, u = new SpeechSynthesisUtterance(t);
-            u.lang = 'pt-BR'; u.pitch = cinemaMode ? 1.6 : 0.8; u.volume = cinemaMode ? 0.3 : 1;
-            u.onstart = () => { isTalking = true; if(!danceMode) mouth.classList.add('talking'); document.querySelectorAll('.pupil').forEach(p => { p.style.left = '25px'; p.style.top = '25px'; }); };
-            u.onend = () => { isTalking = false; if(!danceMode) mouth.classList.remove('talking'); };
-            s.speak(u);
-        }
-
-        function animarRosto(e) {
-            [eyeL, eyeR].forEach(el => el.className = 'eye ' + e);
-            if(e === 'sad') mouth.classList.add('sad-mouth');
-            setTimeout(() => { [eyeL, eyeR].forEach(el => el.className = 'eye'); mouth.classList.remove('sad-mouth'); }, 3000);
-        }
-
-        function tocarOlho() {
-            if(cinemaMode) return; // Se tiver no cinema, ele ignora o toque pra não estragar a imersão
-            toqueCount++;
-            if(toqueCount === 1) { falar("Ai! Meu olho!"); animarRosto('sad'); }
-            else { falar("Se não parar, eu toco no seu também, k k k!"); animarRosto('laugh'); toqueCount = 0; }
-        }
-
-        // ================= MENU E CONFIGURAÇÕES =================
+        // Abrir menu com 6 cliques
         document.addEventListener('click', (e) => {
             if (e.target.closest('.eye') || e.target.closest('#settings') || e.target.closest('#btn-start')) return;
-
             clickCount++;
             clearTimeout(clickTimer);
-            
             clickTimer = setTimeout(() => { clickCount = 0; }, 1500);
-
-            if (clickCount >= 6) {
-                configMenu.style.display = 'flex';
-                clickCount = 0;
-            }
+            if (clickCount >= 6) { configMenu.style.display = 'flex'; clickCount = 0; }
         });
 
         function fecharConfig() { configMenu.style.display = 'none'; }
@@ -313,25 +238,40 @@
         function toggleMic() { 
             micOn = !micOn; 
             const btn = document.getElementById('toggle-mic');
-            if(micOn) {
-                btn.classList.add('btn-active');
-                btn.innerText = "MICROFONE: ON";
-                recognition.start();
-            } else {
-                btn.classList.remove('btn-active');
-                btn.innerText = "MICROFONE: OFF";
-                recognition.stop();
-            }
+            btn.innerText = micOn ? "MICROFONE: ON" : "MICROFONE: OFF";
+            if(micOn) { btn.classList.add('btn-active'); try { recognition.start(); } catch(e) {} }
+            else { btn.classList.remove('btn-active'); recognition.stop(); }
         }
-        
-        setInterval(() => {
-            if(!danceMode && !cinemaMode && !isTalking) {
-                const x = Math.random() * 50, y = Math.random() * 50;
-                document.querySelectorAll('.pupil').forEach(p => { p.style.left = x + 'px'; p.style.top = y + 'px'; });
-            }
-        }, 10000);
 
-        recognition.onend = () => { if(micOn) recognition.start(); };
+        function ativarDança() {
+            if(danceMode) return;
+            danceMode = true;
+            falar("Festa no sistema!");
+            [eyeL, eyeR, mouth].forEach(el => el.classList.add('dancing'));
+            danceInterval = setInterval(() => { moverElemento(eyeL, pos.el); moverElemento(eyeR, pos.er); moverElemento(mouth, pos.m); }, 20);
+        }
+
+        function pararDança() {
+            danceMode = false;
+            clearInterval(danceInterval);
+            [eyeL, eyeR, mouth].forEach(el => { el.classList.remove('dancing'); el.style.left = ''; el.style.top = ''; });
+        }
+
+        function tocarOlho() {
+            toqueCount++;
+            if(toqueCount === 1) { falar("Ai!"); animarRosto('sad'); }
+            else { falar("Para! k k k"); animarRosto('laugh'); toqueCount = 0; }
+        }
+
+        let danceInterval;
+        let pos = { el: {x:0, y:0, vx:5, vy:5}, er: {x:0, y:0, vx:-4, vy:6}, m: {x:0, y:0, vx:6, vy:-4} };
+        function moverElemento(el, p) {
+            let w = window.innerWidth - el.offsetWidth, h = window.innerHeight - el.offsetHeight;
+            p.x += p.vx; p.y += p.vy;
+            if(p.x >= w || p.x <= 0) p.vx *= -1;
+            if(p.y >= h || p.y <= 0) p.vy *= -1;
+            el.style.left = p.x + 'px'; el.style.top = p.y + 'px';
+        }
     </script>
 </body>
 </html>
