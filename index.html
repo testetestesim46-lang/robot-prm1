@@ -5,31 +5,32 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Plutis - Robô Amigo</title>
     <style>
-        /* Fundo base preto */
+        /* Fundo sempre preto */
         html, body { background-color: #000; color: #fff; margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: sans-serif; position: relative; touch-action: manipulation; }
         
-        /* O vídeo da dança ficará escondido atrás do rosto */
+        /* O vídeo da dança ocupa tudo */
         #dance-video {
-            display: none;
+            display: none; /* Escondido por padrão */
             position: absolute;
             top: 0; left: 0;
             width: 100%; height: 100%;
             object-fit: cover;
-            z-index: 0; /* Fica atrás de tudo */
+            z-index: 10; /* Fica na frente do rosto quando ativo */
         }
 
-        /* Container do rosto tem que ficar na frente do vídeo */
+        /* Container do rosto */
         #face-container {
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             width: 100%; height: 100%;
-            position: absolute; z-index: 2;
+            position: absolute; z-index: 2; /* Fica atrás do vídeo se o vídeo aparecer */
+            transition: opacity 0.3s; /* Suaviza o sumiço */
         }
         
         .face { display: flex; flex-direction: column; align-items: center; gap: 30px; position: relative; width: 100%; justify-content: center; }
         .eyes-row { display: flex; gap: 40px; position: relative; }
         
         /* O Chapéu de Rima */
-        #hat { display: none; position: absolute; font-size: 80px; top: -65px; left: 50%; transform: translateX(-50%) rotate(-15deg); z-index: 10; text-shadow: 0 0 10px rgba(0,0,0,0.8); }
+        #hat { display: none; position: absolute; font-size: 80px; top: -65px; left: 50%; transform: translateX(-50%) rotate(-15deg); z-index: 11; text-shadow: 0 0 10px rgba(0,0,0,0.8); }
 
         .eye { width: 80px; height: 80px; background: white; border-radius: 50%; position: relative; transition: 0.3s; box-shadow: 0 0 15px rgba(255,255,255,0.4); z-index: 2; overflow: hidden; }
         .pupil { width: 30px; height: 30px; background: black; border-radius: 50%; position: absolute; top: 25px; left: 25px; transition: 0.5s ease-in-out; }
@@ -103,9 +104,11 @@
         const bucket = document.getElementById('bucket');
         const hat = document.getElementById('hat');
         const videoDanca = document.getElementById('dance-video');
+        const faceContainer = document.getElementById('face-container');
         
         let micOn = true, cinemaMode = false, danceMode = false, isTalking = false, faceFixada = false, rimaMode = false;
-        let clickCount = 0, clickTimer, popcornTimeout1; 
+        let clickCount = 0, clickTimer;
+        let toqueCount = 0, popcornTimeout1; 
 
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         const recognition = new (SpeechRecognition)();
@@ -137,7 +140,7 @@
         recognition.onend = () => { if (micOn && !isTalking) try { recognition.start(); } catch(e) {} };
 
         function processarComando(msg) {
-            // DESATIVAR
+            // DESATIVAR (funciona para todos os modos)
             if (msg.includes("desativar modo") || msg.includes("parar tudo")) { pararTudo(); return; }
 
             // MODO RIMA
@@ -148,7 +151,6 @@
                     "ooohh essa foi boa, mais você ja sabe, que eu farmo aura é um viado"
                 ];
                 falar(rimas[Math.floor(Math.random() * rimas.length)]);
-                if(!faceFixada) animarRosto('angry'); 
                 return; 
             }
 
@@ -156,6 +158,7 @@
             if (msg.includes("modo rima")) {
                 rimaMode = true;
                 hat.style.display = 'block';
+                animarRosto('angry', true); // Cara de bravo fixa no modo rima
                 falar("Modo rima ativado! Pode mandar.");
                 return;
             }
@@ -191,7 +194,7 @@
             if (msg === "olá" || msg === "ola") { falar("oi gente tudo bem com vocês"); if(!faceFixada) animarRosto('happy'); return; }
             if (msg.includes("lá ele") || msg.includes("la ele")) { falar("você em cima dele k k k k"); if(!faceFixada) animarRosto('laugh'); return; }
 
-            // MODO DANÇA COM VÍDEO
+            // MODOS POR VOZ
             if (msg.includes("modo dança") || msg.includes("dançar")) { ativarDança(); return; }
             if (msg.includes("modo bravo")) { animarRosto('angry', true); falar("Estou muito bravo agora!"); return; }
 
@@ -290,28 +293,36 @@
             else { btn.classList.remove('btn-active'); recognition.stop(); }
         }
 
-        // ================= MODO DANÇA COM VÍDEO =================
+        // ================= MODO DANÇA CORRIGIDO =================
         function ativarDança() {
             if(danceMode) return;
             danceMode = true;
             falar("hora da festa");
             
-            // Tira o fundo preto da página e mostra o vídeo atrás
-            document.body.style.backgroundColor = "transparent";
+            // SOME O ROSTO TOTALMENTE
+            faceContainer.style.opacity = "0";
+            setTimeout(() => { faceContainer.style.display = "none"; }, 300); // Tira do fluxo após sumir
+
+            // MOSTRA E TOCA O VÍDEO
             videoDanca.style.display = "block";
-            videoDanca.play().catch(e => console.log("Erro ao dar play no vídeo:", e));
+            videoDanca.play().catch(e => console.log("Erro vídeo:", e));
         }
 
         function pararDança() {
             danceMode = false;
-            // Para o vídeo, esconde ele e volta o fundo para preto
+            
+            // PARA E ESCONDE O VÍDEO
             videoDanca.pause();
             videoDanca.currentTime = 0;
             videoDanca.style.display = "none";
-            document.body.style.backgroundColor = "#000";
+
+            // VOLTA O ROSTO
+            faceContainer.style.display = "flex";
+            setTimeout(() => { faceContainer.style.opacity = "1"; }, 10);
         }
 
         function tocarOlho() {
+            if(danceMode) return; // Não toca olho se estiver dançando (vídeo na frente)
             toqueCount++;
             if(toqueCount === 1) { falar("ai meu olho"); animarRosto('sad'); }
             else { falar("para k k k"); animarRosto('laugh'); toqueCount = 0; }
