@@ -11,8 +11,13 @@
         body { display: flex; flex-direction: column; align-items: center; justify-content: center; touch-action: manipulation; }
         
         .face { display: flex; flex-direction: column; align-items: center; gap: 30px; position: relative; width: 100%; height: 100%; justify-content: center; }
-        .eyes-row { display: flex; gap: 40px; }
         
+        /* Ajuste na linha dos olhos para o chapéu ficar certo */
+        .eyes-row { display: flex; gap: 40px; position: relative; }
+        
+        /* O Chapéu de Rima */
+        #hat { display: none; position: absolute; font-size: 80px; top: -65px; left: 50%; transform: translateX(-50%) rotate(-15deg); z-index: 10; text-shadow: 0 0 10px rgba(0,0,0,0.8); }
+
         .eye { width: 80px; height: 80px; background: white; border-radius: 50%; position: relative; transition: 0.3s; box-shadow: 0 0 15px rgba(255,255,255,0.4); z-index: 2; overflow: hidden; }
         .pupil { width: 30px; height: 30px; background: black; border-radius: 50%; position: absolute; top: 25px; left: 25px; transition: 0.5s ease-in-out; }
         .mouth { width: 50px; height: 8px; background: white; border-radius: 10px; transition: 0.1s; z-index: 2; }
@@ -65,6 +70,7 @@
 
     <div class="face" id="robot-face">
         <div class="eyes-row" id="eyes-container">
+            <div id="hat">🧢</div>
             <div class="eye" id="eye-l" onclick="tocarOlho()"><div class="pupil"></div></div>
             <div class="eye" id="eye-r" onclick="tocarOlho()"><div class="pupil"></div></div>
         </div>
@@ -81,8 +87,9 @@
         const btnStart = document.getElementById('btn-start');
         const statusTexto = document.getElementById('status');
         const bucket = document.getElementById('bucket');
+        const hat = document.getElementById('hat');
         
-        let micOn = true, cinemaMode = false, danceMode = false, isTalking = false, faceFixada = false;
+        let micOn = true, cinemaMode = false, danceMode = false, isTalking = false, faceFixada = false, rimaMode = false;
         let clickCount = 0, clickTimer;
         let toqueCount = 0, popcornTimeout1; 
 
@@ -92,17 +99,16 @@
         recognition.continuous = true;
         recognition.interimResults = false;
 
-        // FUNÇÃO PARA SUMIR COM A BARRA DO GOOGLE
         function entrarTelaCheia() {
             let el = document.documentElement;
             if (el.requestFullscreen) el.requestFullscreen();
-            else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen(); // Chrome do Motorola
+            else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen(); 
             else if (el.msRequestFullscreen) el.msRequestFullscreen();
         }
 
         btnStart.onclick = () => {
             btnStart.style.display = 'none';
-            entrarTelaCheia(); // Ativa a tela cheia no clique
+            entrarTelaCheia(); 
             falar("oi tudo bem. Plutis online e pronto para não vacilar hoje!"); 
             animarRosto('happy');
             setTimeout(() => { if(micOn) try { recognition.start(); } catch(e) {} }, 3000);
@@ -117,6 +123,42 @@
         recognition.onend = () => { if (micOn && !isTalking) try { recognition.start(); } catch(e) {} };
 
         function processarComando(msg) {
+            // DESATIVAR (Sempre vem primeiro para garantir que pode sair de qualquer modo)
+            if (msg.includes("desativar modo") || msg.includes("parar tudo")) { pararTudo(); return; }
+
+            // ================= MODO RIMA =================
+            if (rimaMode) {
+                const rimas = [
+                    "mano se ligar, seu vacilão que rima comigo mesmo eu sendo um robozão, se liga meu brother eu vou te dizer sabe que nessa batalha eu ganho de você",
+                    "olha meu parceiro você mandou a real, mais mandou a real para um marginal, se você fala de mim denovo você vai ver porque nessa rima eu ganho de você",
+                    "ooohh essa foi boa, mais você ja sabe, que eu farmo aura é um viado"
+                ];
+                falar(rimas[Math.floor(Math.random() * rimas.length)]);
+                if(!faceFixada) animarRosto('angry'); // Faz cara de bravo na rima
+                return; // Impede que ele faça qualquer outra coisa
+            }
+
+            // ATIVAR MODO RIMA
+            if (msg.includes("modo rima")) {
+                rimaMode = true;
+                hat.style.display = 'block';
+                falar("Modo rima ativado! Pode mandar.");
+                return;
+            }
+
+            // NOVAS FALAS ESPECÍFICAS
+            if (msg.includes("eu sou a gata velha e você a gata nova") || msg.includes("eu sou a gata velha e voce a gata nova")) {
+                falar("eu sou a gata velha e você a gata nova");
+                if(!faceFixada) animarRosto('laugh');
+                return;
+            }
+
+            if (msg.includes("quais são seus filmes favoritos") || msg.includes("quais sao seus filmes favoritos") || msg.includes("seus filmes favoritos")) {
+                falar("são o homem aranha e Tory story 5");
+                if(!faceFixada) animarRosto('happy');
+                return;
+            }
+
             // MODO SECRETO ROCK LEE
             if (msg.includes("modo secreto")) {
                 falar("six sevem six sevem, eu sou o rock Lee toma toma abacaxi. Eu sou a gata velha e você a gata nova");
@@ -136,7 +178,6 @@
             if (msg === "olá" || msg === "ola") { falar("oi gente tudo bem com vocês"); if(!faceFixada) animarRosto('happy'); return; }
             if (msg.includes("lá ele") || msg.includes("la ele")) { falar("você em cima dele k k k k"); if(!faceFixada) animarRosto('laugh'); return; }
 
-            if (msg.includes("desativar modo") || msg.includes("parar tudo")) { pararTudo(); return; }
             if (msg.includes("modo dança") || msg.includes("dançar")) { ativarDança(); return; }
             if (msg.includes("modo bravo")) { animarRosto('angry', true); falar("Estou muito bravo agora!"); return; }
 
@@ -176,12 +217,14 @@
 
         function pararTudo() {
             faceFixada = false;
+            rimaMode = false; // Desliga o modo rima
+            hat.style.display = 'none'; // Esconde o chapéu
             if(danceMode) pararDança();
             if(cinemaMode) toggleCinema();
             fecharConfig();
             [eyeL, eyeR].forEach(el => el.className = 'eye'); 
             mouth.classList.remove('sad-mouth');
-            document.body.style.background = "#000"; // Força o fundo a voltar pro preto
+            document.body.style.background = "#000"; 
             falar("sistema resetado");
         }
 
@@ -234,15 +277,14 @@
             else { btn.classList.remove('btn-active'); recognition.stop(); }
         }
 
-        let danceInterval, flashInterval; // Adicionado flashInterval aqui
+        let danceInterval, flashInterval; 
 
         function ativarDança() {
             if(danceMode) return;
             danceMode = true;
-            falar("solta as luzes");
+            falar("hora da festa");
             [eyeL, eyeR, mouth].forEach(el => el.classList.add('dancing'));
             
-            // Efeito de piscar a tela
             flashInterval = setInterval(() => {
                 const cores = ['#ff00ff', '#00ffff', '#ffff00', '#000000', '#ff0000'];
                 document.body.style.background = cores[Math.floor(Math.random() * cores.length)];
@@ -254,8 +296,8 @@
         function pararDança() {
             danceMode = false;
             clearInterval(danceInterval);
-            clearInterval(flashInterval); // Para de piscar
-            document.body.style.background = "#000"; // Volta o fundo pra preto
+            clearInterval(flashInterval); 
+            document.body.style.background = "#000"; 
             [eyeL, eyeR, mouth].forEach(el => { el.classList.remove('dancing'); el.style.left = ''; el.style.top = ''; });
         }
 
