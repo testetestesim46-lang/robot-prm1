@@ -5,7 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Plutis - Robô Amigo</title>
     <style>
-        body { background-color: #000; color: #fff; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; overflow: hidden; touch-action: manipulation; transition: background 0.5s; }
+        /* Fundo sempre preto para não vacilar */
+        html, body { background-color: #000; color: #fff; margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: sans-serif; }
+        
+        body { display: flex; flex-direction: column; align-items: center; justify-content: center; touch-action: manipulation; }
         
         .face { display: flex; flex-direction: column; align-items: center; gap: 30px; position: relative; width: 100%; height: 100%; justify-content: center; }
         .eyes-row { display: flex; gap: 40px; }
@@ -23,11 +26,9 @@
         @keyframes shake { 0% { transform: translate(1px, 1px); } 50% { transform: translate(-1px, -1px); } 100% { transform: translate(1px, -1px); } }
         .dancing { position: absolute !important; margin: 0 !important; }
 
-        /* Estilo do Balde e Pipoca */
         #bucket { display: none; position: fixed; bottom: 20px; right: 20px; font-size: 50px; z-index: 10; filter: drop-shadow(0 0 10px rgba(255,255,255,0.3)); }
         .popcorn { position: absolute; width: 12px; height: 12px; background: #f1c40f; border-radius: 50%; border: 2px solid #fff; z-index: 5; }
         
-        /* Animação: Pipoca saindo do balde para a boca */
         @keyframes jumpOut {
             0% { transform: translate(0, 0) scale(1); opacity: 1; }
             50% { transform: translate(-150px, -200px) scale(1.2); }
@@ -38,7 +39,8 @@
         .btn-config { padding: 12px; margin: 5px; border: 2px solid white; background: none; color: white; border-radius: 10px; width: 80%; font-size: 14px; font-weight: bold; cursor: pointer;}
         .btn-active { background: white; color: black; }
         .btn-danger { border-color: #ff4d4d; color: #ff4d4d; }
-        #btn-start { padding: 20px; font-size: 20px; border-radius: 50px; position: absolute; z-index: 10; border: none; background: white; cursor: pointer; font-weight: bold; }
+        
+        #btn-start { padding: 20px; font-size: 20px; border-radius: 50px; position: absolute; z-index: 200; border: none; background: white; cursor: pointer; font-weight: bold; box-shadow: 0 0 20px #fff; }
 
         #status { position: fixed; bottom: 5px; font-size: 11px; color: #444; text-align: center; width: 100%; z-index: 1; pointer-events: none; }
     </style>
@@ -52,8 +54,9 @@
         <h2>CONFIGURAÇÕES</h2>
         <button id="toggle-mic" class="btn-config btn-active" onclick="toggleMic()">MICROFONE: ON</button>
         <button id="toggle-cinema" class="btn-config" onclick="toggleCinema()">MODO CINEMA: OFF</button>
-        <button class="btn-config" onclick="animarRosto('happy', true); fecharConfig(); falar('Estou muito feliz agora!')">MODO FELIZ</button>
-        <button class="btn-config" onclick="animarRosto('sad', true); fecharConfig(); falar('Poxa, fiquei triste...')">MODO TRISTE</button>
+        <button class="btn-config" onclick="entrarTelaCheia(); fecharConfig()">TELA CHEIA (SUMIR BARRA)</button>
+        <button class="btn-config" onclick="animarRosto('happy', true); fecharConfig(); falar('Estou muito feliz!')">MODO FELIZ</button>
+        <button class="btn-config" onclick="animarRosto('sad', true); fecharConfig(); falar('Fiquei triste...')">MODO TRISTE</button>
         <button class="btn-config btn-danger" onclick="pararTudo()">DESATIVAR TODOS MODOS</button>
         <button class="btn-config" style="margin-top: 20px;" onclick="fecharConfig()">VOLTAR</button>
     </div>
@@ -66,7 +69,7 @@
         <div class="mouth" id="main-mouth"></div>
     </div>
 
-    <div id="status">Aguardando voz...</div>
+    <div id="status">Aguardando ativação...</div>
 
     <script>
         const mouth = document.getElementById('main-mouth');
@@ -87,9 +90,18 @@
         recognition.continuous = true;
         recognition.interimResults = false;
 
+        // FUNÇÃO PARA SUMIR COM A BARRA DO GOOGLE
+        function entrarTelaCheia() {
+            let el = document.documentElement;
+            if (el.requestFullscreen) el.requestFullscreen();
+            else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen(); // Chrome do Motorola
+            else if (el.msRequestFullscreen) el.msRequestFullscreen();
+        }
+
         btnStart.onclick = () => {
             btnStart.style.display = 'none';
-            falar("Ligando sistema. Plutis online e pronto para não vacilar hoje!"); 
+            entrarTelaCheia(); // Ativa a tela cheia no clique
+            falar("oi tudo bem. Plutis online e pronto para não vacilar hoje!"); 
             animarRosto('happy');
             setTimeout(() => { if(micOn) try { recognition.start(); } catch(e) {} }, 3000);
         };
@@ -103,53 +115,34 @@
         recognition.onend = () => { if (micOn && !isTalking) try { recognition.start(); } catch(e) {} };
 
         function processarComando(msg) {
-            // ================= MATEMÁTICA =================
             if (msg.includes("quanto é") || msg.includes("quanto e")) {
                 let expressao = msg.replace("quanto é", "").replace("quanto e", "").replace("x", "").replace("vezes", "");
                 try {
                     let resultado = eval(expressao.replace(/[^-()\d/*+.]/g, ''));
-                    falar("O resultado é " + resultado);
+                    falar("o resultado é " + resultado);
                     return;
-                } catch (e) { falar("Não consegui calcular agora!"); return; }
+                } catch (e) { falar("não consegui calcular agora"); return; }
             }
 
-            // ================= SAUDAÇÕES (ATUALIZADAS) =================
-            if (msg === "oi") {
-                falar("oi tudo bem");
-                if(!faceFixada) animarRosto('happy');
-                return;
-            }
-            if (msg === "olá" || msg === "ola") {
-                falar("oi gente tudo bem com vocês");
-                if(!faceFixada) animarRosto('happy');
-                return;
-            }
+            if (msg === "oi") { falar("oi tudo bem"); if(!faceFixada) animarRosto('happy'); return; }
+            if (msg === "olá" || msg === "ola") { falar("oi gente tudo bem com vocês"); if(!faceFixada) animarRosto('happy'); return; }
+            if (msg.includes("lá ele") || msg.includes("la ele")) { falar("você em cima dele k k k k"); if(!faceFixada) animarRosto('laugh'); return; }
 
-            // ================= LÁ ELE =================
-            if (msg.includes("lá ele") || msg.includes("la ele")) {
-                falar("Você em cima dele! k k k k");
-                if(!faceFixada) animarRosto('laugh');
-                return;
-            }
-
-            // ================= COMANDOS DE MODOS =================
             if (msg.includes("desativar modo") || msg.includes("parar tudo")) { pararTudo(); return; }
             if (msg.includes("modo dança") || msg.includes("dançar")) { ativarDança(); return; }
 
-            // ================= CINEMA =================
             if (cinemaMode) {
-                if (msg.includes("gostou do filme")) falar("Com certeza! Com pipoca tudo fica melhor.");
+                if (msg.includes("gostou do filme")) falar("claro com pipoca tudo fica melhor");
                 else if (msg.includes("desativar cinema")) toggleCinema();
-                else falar("Shhh, o filme tá rolando!");
+                else falar("shhh o filme tá rolando");
                 return;
             }
             if (msg.includes("modo cinema") || msg.includes("modo pipoca")) { toggleCinema(); return; }
 
-            // ================= RESPOSTAS VARIADAS =================
-            if (msg.includes("triste")) { falar("Não fica triste!"); if(!faceFixada) animarRosto('sad'); }
-            else if (msg.includes("feliz")) { falar("Isso aí!"); if(!faceFixada) animarRosto('happy'); }
+            if (msg.includes("triste")) { falar("não fica triste"); if(!faceFixada) animarRosto('sad'); }
+            else if (msg.includes("feliz")) { falar("isso aí"); if(!faceFixada) animarRosto('happy'); }
             else {
-                const aleatorias = ["Tô ouvindo.", "Entendi.", "Que legal!", "Tamo junto!"];
+                const aleatorias = ["tô ouvindo", "entendi", "que legal", "tamo junto"];
                 falar(aleatorias[Math.floor(Math.random() * aleatorias.length)]);
             }
         }
@@ -167,14 +160,8 @@
             [eyeL, eyeR].forEach(el => { el.className = 'eye ' + e; });
             if(e === 'sad') mouth.classList.add('sad-mouth');
             else mouth.classList.remove('sad-mouth');
-            
             if(!fixar) {
-                setTimeout(() => { 
-                    if(!faceFixada) {
-                        [eyeL, eyeR].forEach(el => el.className = 'eye'); 
-                        mouth.classList.remove('sad-mouth'); 
-                    }
-                }, 4000);
+                setTimeout(() => { if(!faceFixada) { [eyeL, eyeR].forEach(el => el.className = 'eye'); mouth.classList.remove('sad-mouth'); } }, 4000);
             }
         }
 
@@ -185,7 +172,7 @@
             fecharConfig();
             [eyeL, eyeR].forEach(el => el.className = 'eye'); 
             mouth.classList.remove('sad-mouth');
-            falar("Sistema resetado.");
+            falar("sistema resetado");
         }
 
         function toggleCinema() {
@@ -195,7 +182,7 @@
             if(cinemaMode) {
                 btn.classList.add('btn-active');
                 bucket.style.display = 'block';
-                falar("Modo cinema ligado. Olha o balde de pipoca!");
+                falar("modo cinema ligado olha o balde de pipoca");
                 document.body.style.backgroundColor = "#0a0a0a";
                 chuvaDePipoca();
             } else {
@@ -210,21 +197,15 @@
             if(!cinemaMode) return;
             const p = document.createElement('div');
             p.className = 'popcorn';
-            // Posição inicial: no balde
-            p.style.right = "40px";
-            p.style.bottom = "60px";
+            p.style.right = "40px"; p.style.bottom = "60px";
             p.style.animation = "jumpOut 1.5s ease-out forwards";
             document.body.appendChild(p);
-
-            // Abre a boca quando a pipoca está "perto"
             setTimeout(() => { if(!isTalking) mouth.classList.add('talking'); }, 800);
             setTimeout(() => { if(!isTalking) mouth.classList.remove('talking'); }, 1200);
-
             setTimeout(() => p.remove(), 1500);
             popcornTimeout1 = setTimeout(chuvaDePipoca, 1000);
         }
 
-        // Abrir menu com 6 cliques
         document.addEventListener('click', (e) => {
             if (e.target.closest('.eye') || e.target.closest('#settings') || e.target.closest('#btn-start')) return;
             clickCount++;
@@ -246,7 +227,7 @@
         function ativarDança() {
             if(danceMode) return;
             danceMode = true;
-            falar("Festa no sistema!");
+            falar("hora da festa");
             [eyeL, eyeR, mouth].forEach(el => el.classList.add('dancing'));
             danceInterval = setInterval(() => { moverElemento(eyeL, pos.el); moverElemento(eyeR, pos.er); moverElemento(mouth, pos.m); }, 20);
         }
@@ -259,8 +240,8 @@
 
         function tocarOlho() {
             toqueCount++;
-            if(toqueCount === 1) { falar("Ai!"); animarRosto('sad'); }
-            else { falar("Para! k k k"); animarRosto('laugh'); toqueCount = 0; }
+            if(toqueCount === 1) { falar("ai meu olho"); animarRosto('sad'); }
+            else { falar("para k k k"); animarRosto('laugh'); toqueCount = 0; }
         }
 
         let danceInterval;
