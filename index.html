@@ -5,9 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Plutis - Robô Amigo</title>
     <style>
-        /* Fundo sempre preto para não vacilar */
         html, body { background-color: #000; color: #fff; margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: sans-serif; }
-        
         body { display: flex; flex-direction: column; align-items: center; justify-content: center; touch-action: manipulation; }
         
         .face { display: flex; flex-direction: column; align-items: center; gap: 30px; position: relative; width: 100%; height: 100%; justify-content: center; }
@@ -17,9 +15,11 @@
         .pupil { width: 30px; height: 30px; background: black; border-radius: 50%; position: absolute; top: 25px; left: 25px; transition: 0.5s ease-in-out; }
         .mouth { width: 50px; height: 8px; background: white; border-radius: 10px; transition: 0.1s; z-index: 2; }
 
+        /* Estados do Rosto */
         .talking { height: 35px !important; border-radius: 50% !important; }
         .happy { transform: scaleY(0.8) translateY(-5px); border-radius: 50% 50% 20% 20%; box-shadow: 0 0 30px #f1c40f; }
         .sad { background: #88ccff; transform: translateY(10px); border-radius: 20% 20% 50% 50%; box-shadow: 0 0 20px #88ccff; }
+        .angry { background: #ff4d4d !important; transform: scaleY(1.1); box-shadow: 0 0 30px #ff0000; }
         .laugh { animation: shake 0.3s infinite; border-radius: 50% 50% 10% 10%; background: #ffea00; }
         .sad-mouth { border-radius: 50% 50% 0 0; height: 15px; transform: translateY(10px); }
         
@@ -28,12 +28,7 @@
 
         #bucket { display: none; position: fixed; bottom: 20px; right: 20px; font-size: 50px; z-index: 10; filter: drop-shadow(0 0 10px rgba(255,255,255,0.3)); }
         .popcorn { position: absolute; width: 12px; height: 12px; background: #f1c40f; border-radius: 50%; border: 2px solid #fff; z-index: 5; }
-        
-        @keyframes jumpOut {
-            0% { transform: translate(0, 0) scale(1); opacity: 1; }
-            50% { transform: translate(-150px, -200px) scale(1.2); }
-            100% { transform: translate(-300px, 0) scale(0.5); opacity: 0; }
-        }
+        @keyframes jumpOut { 0% { transform: translate(0, 0) scale(1); opacity: 1; } 50% { transform: translate(-150px, -200px) scale(1.2); } 100% { transform: translate(-300px, 0) scale(0.5); opacity: 0; } }
 
         #settings { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 100; flex-direction: column; align-items: center; justify-content: center; padding: 20px 0; }
         .btn-config { padding: 12px; margin: 5px; border: 2px solid white; background: none; color: white; border-radius: 10px; width: 80%; font-size: 14px; font-weight: bold; cursor: pointer;}
@@ -41,7 +36,6 @@
         .btn-danger { border-color: #ff4d4d; color: #ff4d4d; }
         
         #btn-start { padding: 20px; font-size: 20px; border-radius: 50px; position: absolute; z-index: 200; border: none; background: white; cursor: pointer; font-weight: bold; box-shadow: 0 0 20px #fff; }
-
         #status { position: fixed; bottom: 5px; font-size: 11px; color: #444; text-align: center; width: 100%; z-index: 1; pointer-events: none; }
     </style>
 </head>
@@ -53,12 +47,13 @@
     <div id="settings">
         <h2>CONFIGURAÇÕES</h2>
         <button id="toggle-mic" class="btn-config btn-active" onclick="toggleMic()">MICROFONE: ON</button>
-        <button id="toggle-cinema" class="btn-config" onclick="toggleCinema()">MODO CINEMA: OFF</button>
-        <button class="btn-config" onclick="entrarTelaCheia(); fecharConfig()">TELA CHEIA (SUMIR BARRA)</button>
+        <button class="btn-config" onclick="entrarTelaCheia(); fecharConfig()">SUMIR BARRA (TELA CHEIA)</button>
         <button class="btn-config" onclick="animarRosto('happy', true); fecharConfig(); falar('Estou muito feliz!')">MODO FELIZ</button>
-        <button class="btn-config" onclick="animarRosto('sad', true); fecharConfig(); falar('Fiquei triste...')">MODO TRISTE</button>
+        <button class="btn-config" onclick="animarRosto('sad', true); fecharConfig(); falar('Estou triste...')">MODO TRISTE</button>
+        <button class="btn-config" style="color:#ff4d4d" onclick="animarRosto('angry', true); fecharConfig(); falar('Estou muito bravo agora!')">MODO BRAVO</button>
+        <button id="toggle-cinema" class="btn-config" onclick="toggleCinema()">MODO CINEMA: OFF</button>
         <button class="btn-config btn-danger" onclick="pararTudo()">DESATIVAR TODOS MODOS</button>
-        <button class="btn-config" style="margin-top: 20px;" onclick="fecharConfig()">VOLTAR</button>
+        <button class="btn-config" style="margin-top: 15px;" onclick="fecharConfig()">VOLTAR</button>
     </div>
 
     <div class="face" id="robot-face">
@@ -81,8 +76,7 @@
         const bucket = document.getElementById('bucket');
         
         let micOn = true, cinemaMode = false, danceMode = false, isTalking = false, faceFixada = false;
-        let clickCount = 0, clickTimer;
-        let toqueCount = 0, popcornTimeout1; 
+        let clickCount = 0, clickTimer, popcornTimeout1, danceInterval, flashInterval; 
 
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         const recognition = new (SpeechRecognition)();
@@ -90,17 +84,15 @@
         recognition.continuous = true;
         recognition.interimResults = false;
 
-        // FUNÇÃO PARA SUMIR COM A BARRA DO GOOGLE
         function entrarTelaCheia() {
             let el = document.documentElement;
             if (el.requestFullscreen) el.requestFullscreen();
-            else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen(); // Chrome do Motorola
-            else if (el.msRequestFullscreen) el.msRequestFullscreen();
+            else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
         }
 
         btnStart.onclick = () => {
             btnStart.style.display = 'none';
-            entrarTelaCheia(); // Ativa a tela cheia no clique
+            entrarTelaCheia();
             falar("oi tudo bem. Plutis online e pronto para não vacilar hoje!"); 
             animarRosto('happy');
             setTimeout(() => { if(micOn) try { recognition.start(); } catch(e) {} }, 3000);
@@ -115,21 +107,30 @@
         recognition.onend = () => { if (micOn && !isTalking) try { recognition.start(); } catch(e) {} };
 
         function processarComando(msg) {
+            // MATEMÁTICA
             if (msg.includes("quanto é") || msg.includes("quanto e")) {
-                let expressao = msg.replace("quanto é", "").replace("quanto e", "").replace("x", "").replace("vezes", "");
+                let expressao = msg.replace("quanto é", "").replace("quanto e", "").replace("x", "*").replace("vezes", "*");
                 try {
                     let resultado = eval(expressao.replace(/[^-()\d/*+.]/g, ''));
                     falar("o resultado é " + resultado);
                     return;
-                } catch (e) { falar("não consegui calcular agora"); return; }
+                } catch (e) { falar("não consegui calcular"); return; }
+            }
+
+            // MODO SECRETO
+            if (msg.includes("modo secreto")) {
+                falar("six sevem six sevem, eu sou o rock Lee toma toma abacaxi. Eu sou a gata velha e você a gata nova");
+                return;
             }
 
             if (msg === "oi") { falar("oi tudo bem"); if(!faceFixada) animarRosto('happy'); return; }
             if (msg === "olá" || msg === "ola") { falar("oi gente tudo bem com vocês"); if(!faceFixada) animarRosto('happy'); return; }
             if (msg.includes("lá ele") || msg.includes("la ele")) { falar("você em cima dele k k k k"); if(!faceFixada) animarRosto('laugh'); return; }
 
+            // MODOS POR VOZ
             if (msg.includes("desativar modo") || msg.includes("parar tudo")) { pararTudo(); return; }
             if (msg.includes("modo dança") || msg.includes("dançar")) { ativarDança(); return; }
+            if (msg.includes("modo bravo")) { animarRosto('angry', true); falar("Estou muito bravo agora! Não me irrite."); return; }
 
             if (cinemaMode) {
                 if (msg.includes("gostou do filme")) falar("claro com pipoca tudo fica melhor");
@@ -172,21 +173,19 @@
             fecharConfig();
             [eyeL, eyeR].forEach(el => el.className = 'eye'); 
             mouth.classList.remove('sad-mouth');
+            document.body.style.background = "#000";
             falar("sistema resetado");
         }
 
         function toggleCinema() {
             cinemaMode = !cinemaMode;
-            const btn = document.getElementById('toggle-cinema');
-            btn.innerText = cinemaMode ? "MODO CINEMA: ON" : "MODO CINEMA: OFF";
+            document.getElementById('toggle-cinema').innerText = cinemaMode ? "MODO CINEMA: ON" : "MODO CINEMA: OFF";
             if(cinemaMode) {
-                btn.classList.add('btn-active');
                 bucket.style.display = 'block';
-                falar("modo cinema ligado olha o balde de pipoca");
+                falar("modo cinema ligado");
                 document.body.style.backgroundColor = "#0a0a0a";
                 chuvaDePipoca();
             } else {
-                btn.classList.remove('btn-active');
                 bucket.style.display = 'none';
                 document.body.style.backgroundColor = "#000";
                 clearTimeout(popcornTimeout1);
@@ -206,35 +205,26 @@
             popcornTimeout1 = setTimeout(chuvaDePipoca, 1000);
         }
 
-        document.addEventListener('click', (e) => {
-            if (e.target.closest('.eye') || e.target.closest('#settings') || e.target.closest('#btn-start')) return;
-            clickCount++;
-            clearTimeout(clickTimer);
-            clickTimer = setTimeout(() => { clickCount = 0; }, 1500);
-            if (clickCount >= 6) { configMenu.style.display = 'flex'; clickCount = 0; }
-        });
-
-        function fecharConfig() { configMenu.style.display = 'none'; }
-        
-        function toggleMic() { 
-            micOn = !micOn; 
-            const btn = document.getElementById('toggle-mic');
-            btn.innerText = micOn ? "MICROFONE: ON" : "MICROFONE: OFF";
-            if(micOn) { btn.classList.add('btn-active'); try { recognition.start(); } catch(e) {} }
-            else { btn.classList.remove('btn-active'); recognition.stop(); }
-        }
-
         function ativarDança() {
             if(danceMode) return;
             danceMode = true;
-            falar("hora da festa");
+            falar("hora da festa solta o som e as luzes");
             [eyeL, eyeR, mouth].forEach(el => el.classList.add('dancing'));
+            
+            // EFEITO DE PISCAR A TELA
+            flashInterval = setInterval(() => {
+                const cores = ['#ff00ff', '#00ffff', '#ffff00', '#000000', '#ff0000'];
+                document.body.style.background = cores[Math.floor(Math.random() * cores.length)];
+            }, 150;
+
             danceInterval = setInterval(() => { moverElemento(eyeL, pos.el); moverElemento(eyeR, pos.er); moverElemento(mouth, pos.m); }, 20);
         }
 
         function pararDança() {
             danceMode = false;
             clearInterval(danceInterval);
+            clearInterval(flashInterval);
+            document.body.style.background = "#000";
             [eyeL, eyeR, mouth].forEach(el => { el.classList.remove('dancing'); el.style.left = ''; el.style.top = ''; });
         }
 
@@ -244,7 +234,17 @@
             else { falar("para k k k"); animarRosto('laugh'); toqueCount = 0; }
         }
 
-        let danceInterval;
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('.eye') || e.target.closest('#settings') || e.target.id === 'btn-start') return;
+            clickCount++;
+            clearTimeout(clickTimer);
+            clickTimer = setTimeout(() => { clickCount = 0; }, 1500);
+            if (clickCount >= 6) { configMenu.style.display = 'flex'; clickCount = 0; }
+        });
+
+        function fecharConfig() { configMenu.style.display = 'none'; }
+        function toggleMic() { micOn = !micOn; if(micOn) recognition.start(); else recognition.stop(); fecharConfig(); }
+
         let pos = { el: {x:0, y:0, vx:5, vy:5}, er: {x:0, y:0, vx:-4, vy:6}, m: {x:0, y:0, vx:6, vy:-4} };
         function moverElemento(el, p) {
             let w = window.innerWidth - el.offsetWidth, h = window.innerHeight - el.offsetHeight;
